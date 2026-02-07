@@ -1,0 +1,56 @@
+{
+  "name": "openclaw-langsmith",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "LangSmith tracing plugin for OpenClaw. Automatic observability for agent turns, tool calls, and LLM invocations.",
+  "license": "MIT",
+  "author": "Joshua Warren",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joshuaswarren/openclaw-langsmith.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joshuaswarren/openclaw-langsmith/issues"
+  },
+  "homepage": "https://github.com/joshuaswarren/openclaw-langsmith#readme",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "langsmith",
+    "langchain",
+    "tracing",
+    "observability",
+    "llm",
+    "ai-agent",
+    "telemetry",
+    "monitoring",
+    "debugging"
+  ],
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "plugin": "./openclaw.plugin.json",
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}

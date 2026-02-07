@@ -1,0 +1,30 @@
+{
+  "id": "openclaw-langsmith",
+  "kind": "utility",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "langsmithApiKey": {
+        "type": "string",
+        "description": "LangSmith API key (or set LANGSMITH_API_KEY env var)"
+      },
+      "langsmithEndpoint": {
+        "type": "string",
+        "default": "https://api.smith.langchain.com",
+        "description": "LangSmith API endpoint"
+      },
+      "projectName": {
+        "type": "string",
+        "default": "openclaw",
+        "description": "LangSmith project name"
+      },
+      "traceAgentTurns": { "type": "boolean", "default": true },
+      "traceToolCalls": { "type": "boolean", "default": true },
+      "traceEngramLlm": { "type": "boolean", "default": true },
+      "batchIntervalMs": { "type": "number", "default": 1000 },
+      "batchMaxSize": { "type": "number", "default": 20 },
+      "debug": { "type": "boolean", "default": false }
+    }
+  }
+}
