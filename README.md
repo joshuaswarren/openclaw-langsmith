@@ -36,17 +36,51 @@ npm install && npm run build
 
 ### 3. Add API Key to Gateway Environment
 
-The gateway runs as a launchd service. Add your key to the plist:
+The gateway needs the API key in its environment. Choose your platform:
 
-```bash
-# Edit ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-# Add inside EnvironmentVariables:
-```
+<details>
+<summary><strong>macOS (launchd)</strong></summary>
+
+Edit `~/Library/LaunchAgents/ai.openclaw.gateway.plist` and add inside `EnvironmentVariables`:
 
 ```xml
 <key>LANGSMITH_API_KEY</key>
 <string>lsv2_pt_your_key_here</string>
 ```
+</details>
+
+<details>
+<summary><strong>Linux (systemd)</strong></summary>
+
+Edit `~/.config/systemd/user/openclaw-gateway.service` and add to the `[Service]` section:
+
+```ini
+Environment="LANGSMITH_API_KEY=lsv2_pt_your_key_here"
+```
+
+Or create an environment file at `~/.config/openclaw/env`:
+
+```bash
+LANGSMITH_API_KEY=lsv2_pt_your_key_here
+```
+
+Then reference it in the service file:
+
+```ini
+EnvironmentFile=%h/.config/openclaw/env
+```
+</details>
+
+<details>
+<summary><strong>Docker</strong></summary>
+
+Add to your `docker-compose.yml` or pass via `-e`:
+
+```yaml
+environment:
+  - LANGSMITH_API_KEY=lsv2_pt_your_key_here
+```
+</details>
 
 ### 4. Enable in openclaw.json
 
@@ -69,11 +103,22 @@ The gateway runs as a launchd service. Add your key to the plist:
 
 ### 5. Restart Gateway
 
+**macOS:**
 ```bash
 launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway
 ```
 
-Verify with:
+**Linux:**
+```bash
+systemctl --user restart openclaw-gateway
+```
+
+**Docker:**
+```bash
+docker compose restart openclaw-gateway
+```
+
+**Verify** (all platforms):
 ```bash
 tail -f ~/.openclaw/logs/gateway.log | grep langsmith
 # Should see: [langsmith] langsmith tracing active
