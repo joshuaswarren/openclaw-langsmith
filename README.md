@@ -168,15 +168,16 @@ Hooks into `before_tool_call` and `after_tool_call`. Tool runs are nested under 
 
 ### Engram LLM Calls
 The engram memory plugin emits `LlmTraceEvent` objects via `globalThis.__openclawEngramTrace`. This plugin subscribes and creates LLM runs with:
-- Full prompt text
+- Full prompt text (no truncation)
+- Full output text (no truncation)
 - Model and operation type
 - Token usage and duration
-- Output (truncated to 2000 chars)
 
 ### Error Isolation
+- **No API key? No problem.** If you install the plugin without configuring an API key, it simply logs a warning and disables itself — OpenClaw continues running normally
 - All LangSmith API calls wrapped in try/catch
-- Failures log warnings but never affect gateway
-- If no API key configured, plugin logs warning and exits cleanly
+- Network failures log warnings but never affect gateway operation
+- Invalid API keys or LangSmith outages won't break your agents
 
 ## Development
 
