@@ -41,6 +41,11 @@ export interface TokenUsage {
   output_tokens?: number;
 }
 
+export interface ModelInfo {
+  model: string;
+  provider: string;
+}
+
 export interface LlmTraceEvent {
   kind: "llm_start" | "llm_end" | "llm_error";
   traceId: string;

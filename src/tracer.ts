@@ -1,4 +1,4 @@
-import type { PluginConfig, LangSmithRun, LlmTraceEvent, TokenUsage } from "./types.js";
+import type { PluginConfig, LangSmithRun, LlmTraceEvent, TokenUsage, ModelInfo } from "./types.js";
 import type { LangSmithClient } from "./client.js";
 import { log } from "./logger.js";
 
@@ -9,6 +9,43 @@ interface ActiveRun {
   parentRunId?: string;
   startTime: string;
   input?: string; // Stored from llm_start for use in llm_end
+}
+
+/**
+ * Parse model info from event data
+ *
+ * Priority:
+ * 1. If provider is explicitly provided in the event, use it directly
+ * 2. If model string contains "/" (e.g., "anthropic/claude-opus-4-5"), parse it
+ * 3. Fallback: infer from model name patterns (last resort)
+ */
+function parseModelInfo(model: string, provider?: string): ModelInfo {
+  // If provider is explicitly provided, use it directly
+  if (provider) {
+    return { provider, model };
+  }
+
+  // If model contains provider prefix (e.g., "anthropic/claude-opus-4-5")
+  if (model.includes("/")) {
+    const [prov, ...rest] = model.split("/");
+    return { provider: prov, model: rest.join("/") };
+  }
+
+  // Fallback: infer from model name patterns (not ideal, but necessary for some cases)
+  let inferredProvider = "unknown";
+  if (model.startsWith("claude")) {
+    inferredProvider = "anthropic";
+  } else if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3")) {
+    inferredProvider = "openai";
+  } else if (model.startsWith("gemini")) {
+    inferredProvider = "google";
+  } else if (model.startsWith("glm")) {
+    inferredProvider = "zai";
+  } else if (model.startsWith("kimi")) {
+    inferredProvider = "kimi";
+  }
+
+  return { provider: inferredProvider, model };
 }
 
 /** Extract tags from session key and prompt for LangSmith filtering */
@@ -75,11 +112,45 @@ export class Tracer {
   private activeAgentRuns = new Map<string, ActiveRun>();
   // Active tool runs keyed by toolCallId
   private activeToolRuns = new Map<string, ActiveRun>();
+  // Track model usage per session (aggregated from llm_end events during a turn)
+  private sessionModels = new Map<string, ModelInfo[]>();
 
   constructor(
     private readonly client: LangSmithClient,
     private readonly config: PluginConfig,
   ) {}
+
+  /** Record an LLM call for a session (called from llm_end hook) */
+  recordLlmCall(sessionKey: string, model: string, provider?: string): void {
+    const modelInfo = parseModelInfo(model, provider);
+    const models = this.sessionModels.get(sessionKey) ?? [];
+    models.push(modelInfo);
+    this.sessionModels.set(sessionKey, models);
+    log.debug(`recorded LLM call for ${sessionKey}: ${modelInfo.provider}/${modelInfo.model}`);
+  }
+
+  /** Get the primary model used in a session (most recent or most used) */
+  private getSessionModelInfo(sessionKey: string): ModelInfo | undefined {
+    const models = this.sessionModels.get(sessionKey);
+    if (!models || models.length === 0) return undefined;
+    // Return the last (most recent) model used
+    return models[models.length - 1];
+  }
+
+  /** Get all models used in a session */
+  private getAllSessionModels(sessionKey: string): string[] {
+    const models = this.sessionModels.get(sessionKey);
+    if (!models || models.length === 0) return [];
+    // Deduplicate
+    const seen = new Set<string>();
+    return models
+      .map((m) => `${m.provider}/${m.model}`)
+      .filter((s) => {
+        if (seen.has(s)) return false;
+        seen.add(s);
+        return true;
+      });
+  }
 
   startAgentRun(sessionKey: string, prompt: string): void {
     try {
@@ -121,12 +192,18 @@ export class Tracer {
 
       this.activeAgentRuns.delete(sessionKey);
 
+      // Get model info tracked during this turn
+      const modelInfo = this.getSessionModelInfo(sessionKey);
+      const allModels = this.getAllSessionModels(sessionKey);
+      // Clear session models for next turn
+      this.sessionModels.delete(sessionKey);
+
       // Normalize token usage - OpenClaw might use different field names
       const promptTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
       const completionTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
       const totalTokens = usage?.total_tokens ?? (promptTokens + completionTokens);
 
-      log.debug(`endAgentRun: session=${sessionKey}, tokens=${totalTokens}`);
+      log.debug(`endAgentRun: session=${sessionKey}, tokens=${totalTokens}, model=${modelInfo?.provider}/${modelInfo?.model}`);
 
       // LangSmith expects usage_metadata in outputs for token tracking
       const usageMetadata = totalTokens > 0 ? {
@@ -143,6 +220,9 @@ export class Tracer {
         outputs: {
           messages,
           success,
+          // Model info for easy visibility
+          ...(modelInfo && { model: modelInfo.model, provider: modelInfo.provider }),
+          ...(allModels.length > 1 && { all_models: allModels }),
           // usage_metadata is where LangSmith extracts token counts from
           ...(usageMetadata && { usage_metadata: usageMetadata }),
         },
@@ -156,6 +236,12 @@ export class Tracer {
           metadata: {
             sessionKey,
             durationMs,
+            // Model info for LangSmith metadata panel
+            ...(modelInfo && {
+              model: modelInfo.model,
+              provider: modelInfo.provider,
+            }),
+            ...(allModels.length > 0 && { models_used: allModels }),
           },
           // Also try putting usage data in extra.usage
           ...(usageMetadata && {
@@ -166,6 +252,10 @@ export class Tracer {
             },
           }),
         },
+        // Add tags for model/provider for easy filtering in LangSmith
+        tags: [
+          ...(modelInfo ? [`provider:${modelInfo.provider}`, `model:${modelInfo.model}`] : []),
+        ],
       };
 
       if (!success) {
@@ -173,7 +263,7 @@ export class Tracer {
       }
 
       this.client.updateRun(active.runId, patch);
-      log.debug(`ended agent run ${active.runId} (tokens: ${totalTokens}, duration: ${durationMs}ms)`);
+      log.debug(`ended agent run ${active.runId} (model: ${modelInfo?.provider}/${modelInfo?.model}, tokens: ${totalTokens}, duration: ${durationMs}ms)`);
     } catch (err) {
       log.warn(`failed to end agent run: ${err}`);
     }

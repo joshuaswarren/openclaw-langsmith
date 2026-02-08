@@ -103,6 +103,16 @@ export default {
       });
     }
 
+    // Hook: llm_end — Capture model/provider info for agent runs
+    // This ensures we track which model was actually used for each LLM call
+    api.on("llm_end", (event: Record<string, unknown>, ctx: Record<string, unknown>) => {
+      const sessionKey = (ctx?.sessionKey as string) ?? "default";
+      const model = (event.model as string) ?? "unknown";
+      // Check if provider is explicitly available in the event or context
+      const provider = (event.provider as string | undefined) ?? (ctx?.provider as string | undefined);
+      tracer.recordLlmCall(sessionKey, model, provider);
+    });
+
     // Subscribe to engram trace callback
     if (cfg.traceEngramLlm) {
       (globalThis as any).__openclawEngramTrace = (event: LlmTraceEvent) => {
